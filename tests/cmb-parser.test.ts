@@ -45,3 +45,14 @@ test("支持招商银行空格分栏版式", () => {
   assert.equal(rows[0].budgetCategory, "餐饮");
   assert.equal(rows[1].kind, "income");
 });
+
+test("跨页页眉页脚不会混入交易对手", () => {
+  const text = `2026-08-31     CNY        -20.00           980.00     消费                    便利店
+温馨提示：请核对流水
+记账日期 货币 交易金额 联机余额 交易摘要 对手信息
+2026-09-01     CNY        -30.00           950.00     消费                    餐厅`;
+  const rows = parseCmbStatement(text);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].counterparty, "便利店");
+  assert.equal(rows[1].counterparty, "餐厅");
+});

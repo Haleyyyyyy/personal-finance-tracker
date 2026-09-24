@@ -98,8 +98,10 @@ function parseColumnLayout(text: string): ParsedTransaction[] {
   return starts.map((lineIndex, index) => {
     const match = lines[lineIndex].trim().match(rowStart)!;
     const end = index + 1 < starts.length ? starts[index + 1] : lines.length;
-    const wrapped = lines.slice(lineIndex + 1, end)
-      .filter((line) => line.trim() && !/记账日期|货币|交易金额|联机余额|第\s*\d+\s*页|招商银行/.test(line))
+    const continuation = lines.slice(lineIndex + 1, end);
+    const boundary = continuation.findIndex((line) => /温馨提示|记账日期\s+货币|^\s*第\s*\d+\s*页/.test(line));
+    const wrapped = (boundary >= 0 ? continuation.slice(0, boundary) : continuation)
+      .filter((line) => line.trim() && !/货币|交易金额|联机余额/.test(line))
       .map((line) => line.trim());
     const columns = match[4].split(/\s{2,}/).map(clean).filter(Boolean);
     const transactionType = columns.shift() ?? "未识别";
