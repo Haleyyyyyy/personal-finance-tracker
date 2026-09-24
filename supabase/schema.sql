@@ -1,0 +1,13 @@
+create extension if not exists "pgcrypto";
+create table if not exists categories(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users not null,name text not null,type text not null check(type in('income','expense','transfer')),created_at timestamptz default now());
+create table if not exists accounts(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users not null,name text not null,institution text,currency text default 'CNY',account_type text,balance numeric(18,2) default 0,created_at timestamptz default now());
+create table if not exists statements(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users not null,account_id uuid references accounts(id),file_name text not null,storage_path text,status text default 'uploaded',period_start date,period_end date,created_at timestamptz default now());
+create table if not exists transactions(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users not null,account_id uuid references accounts(id),statement_id uuid references statements(id),category_id uuid references categories(id),transaction_date date not null,description text not null,amount numeric(18,2) not null,direction text not null check(direction in('income','expense','transfer')),status text default 'review',fingerprint text,raw_data jsonb default '{}'::jsonb,created_at timestamptz default now());
+create unique index if not exists transactions_user_fingerprint on transactions(user_id,fingerprint) where fingerprint is not null;
+alter table categories enable row level security;alter table accounts enable row level security;alter table statements enable row level security;alter table transactions enable row level security;
+create policy "own categories" on categories for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+create policy "own accounts" on accounts for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+create policy "own statements" on statements for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+create policy "own transactions" on transactions for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+insert into storage.buckets(id,name,public) values('statements','statements',false) on conflict(id) do nothing;
+create policy "own statement files" on storage.objects for all using(bucket_id='statements' and (storage.foldername(name))[1]=auth.uid()::text) with check(bucket_id='statements' and (storage.foldername(name))[1]=auth.uid()::text);
