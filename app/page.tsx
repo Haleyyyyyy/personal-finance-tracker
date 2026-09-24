@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import type { User } from "@supabase/supabase-js";
 import { ArrowDownLeft, ArrowUpRight, Check, CircleAlert, FileText, Landmark, LoaderCircle, LogOut, PiggyBank, Plus, Upload, WalletCards } from "lucide-react";
 import { monthSummary, parseCmbStatement, transactionFingerprintSources, type TransactionKind } from "../lib/cmb-parser";
-import { extractPdfText, sha256 } from "../lib/pdf";
+import { extractPdfText, sha256, statementStoragePath } from "../lib/pdf";
 import { supabase } from "../lib/supabase";
 
 type Account = { id: string; name: string; institution: string | null; currency: string | null; account_type: string | null };
@@ -109,8 +109,7 @@ export default function Home() {
       const text = await extractPdfText(file);
       const parsed = parseCmbStatement(text);
       if (!parsed.length) throw new Error("没有识别到招商银行交易明细。请确认这是文本型 PDF，而不是扫描图片。");
-      const safeName = file.name.replace(/[^\p{L}\p{N}._-]+/gu, "-");
-      const storagePath = `${user.id}/${Date.now()}-${safeName}`;
+      const storagePath = await statementStoragePath(user.id, file.name);
       const upload = await client.storage.from("statements").upload(storagePath, file, { contentType: "application/pdf", upsert: false });
       if (upload.error) throw upload.error;
       const dates = parsed.map((row) => row.date).sort();
