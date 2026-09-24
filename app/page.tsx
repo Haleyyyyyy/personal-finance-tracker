@@ -25,8 +25,7 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
-  const [email, setEmail] = useState("");
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [passcode, setPasscode] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [statements, setStatements] = useState<Statement[]>([]);
@@ -74,12 +73,15 @@ export default function Home() {
   const stats = useMemo(() => monthSummary(currentMonthTransactions), [currentMonthTransactions]);
   const reviewCount = transactions.filter((tx) => tx.status === "review").length;
 
-  async function sendMagicLink(event: FormEvent) {
+  async function signInWithPasscode(event: FormEvent) {
     event.preventDefault(); setBusy(true); setNotice(null);
-    const { error } = await supabase().auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+    const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL ?? "haleycheung2@gmail.com";
+    const { error } = await supabase().auth.signInWithPassword({ email: ownerEmail, password: passcode });
     setBusy(false);
-    if (error) setNotice({ tone: "error", text: `登录邮件发送失败：${error.message}` });
-    else setMagicLinkSent(true);
+    if (error) {
+      setPasscode("");
+      setNotice({ tone: "error", text: "Passcode 不正确，请重试。" });
+    }
   }
 
   async function addAccount(event: FormEvent<HTMLFormElement>) {
@@ -149,11 +151,11 @@ export default function Home() {
   }
 
   if (authLoading) return <Centered><LoaderCircle className="spin"/><p>正在恢复登录状态…</p></Centered>;
-  if (!user) return <main className="auth-shell"><div className="auth-card"><div className="logo">¥</div><h1>我的财务管家</h1><p>登录后，你的账户、流水和账单只对你本人可见。</p>{magicLinkSent ? <div className="sent"><Check/>登录链接已发送到 <b>{email}</b>，请打开邮件完成登录。</div> : <form onSubmit={sendMagicLink}><label>邮箱地址<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com"/></label><button className="primary" disabled={busy}>{busy ? <LoaderCircle className="spin"/> : null}发送免密码登录链接</button></form>}{notice ? <NoticeView notice={notice}/> : null}<small>使用 Supabase Auth；无需设置或保存密码。</small></div></main>;
+  if (!user) return <main className="auth-shell"><div className="auth-card"><div className="logo">¥</div><h1>我的财务管家</h1><p>输入你的固定 passcode，继续管理个人财务。</p><form onSubmit={signInWithPasscode}><label>Passcode<input type="password" required autoFocus autoComplete="current-password" value={passcode} onChange={(event) => setPasscode(event.target.value)} placeholder="输入 passcode"/></label><button className="primary" disabled={busy}>{busy ? <LoaderCircle className="spin"/> : null}登录</button></form>{notice ? <NoticeView notice={notice}/> : null}<small>Passcode 由 Supabase Auth 安全验证，不会保存在网页代码中。</small></div></main>;
 
   return <main className="app-shell"><aside><div className="brand"><div className="logo">¥</div><b>我的财务管家</b></div><nav>
     <Nav active={tab === "overview"} onClick={() => setTab("overview")}>总览</Nav><Nav active={tab === "transactions"} onClick={() => setTab("transactions")}>最近交易</Nav><Nav active={tab === "review"} onClick={() => setTab("review")}>待确认 {reviewCount ? <em>{reviewCount}</em> : null}</Nav><Nav active={tab === "accounts"} onClick={() => setTab("accounts")}>账户</Nav><Nav active={tab === "statements"} onClick={() => setTab("statements")}>账单</Nav>
-  </nav><div className="privacy">🔒 数据按用户隔离<br/><small>{user.email}</small><button onClick={() => supabase().auth.signOut()}><LogOut size={14}/>退出登录</button></div></aside>
+  </nav><div className="privacy">🔒 个人财务空间<br/><small>Supabase RLS 数据保护</small><button onClick={() => supabase().auth.signOut()}><LogOut size={14}/>退出登录</button></div></aside>
   <section className="content"><header><div><h1>{tabTitle(tab)}</h1><p>{tab === "overview" ? "真实流水，清楚归类" : "所有数据来自你的 Supabase 账户"}</p></div><div className="header-actions"><select value={selectedAccount} onChange={(event) => setSelectedAccount(event.target.value)} aria-label="选择账户"><option value="">选择账户</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><label className={`upload ${busy ? "disabled" : ""}`}><Upload size={17}/>{busy ? "处理中…" : "上传银行流水 PDF"}<input ref={fileInput} type="file" accept="application/pdf" hidden disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadStatement(file); }}/></label></div></header>
     {notice ? <NoticeView notice={notice}/> : null}
     {!accounts.length && !dataLoading ? <div className="setup panel"><Landmark/><div><h2>先创建第一个银行账户</h2><p>流水需要归属到一个账户，之后才能正确去重和汇总。</p></div><button className="primary" onClick={() => setShowAccountForm(true)}><Plus/>新增账户</button></div> : null}
