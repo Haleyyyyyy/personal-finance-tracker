@@ -23,3 +23,5 @@ npm run dev
 <!-- deployment refresh: Next.js preset -->
 
 <!-- deployment refresh after Vercel output directory fix -->
+
+<!-- deploy: verified Vercel Next.js preset -->
