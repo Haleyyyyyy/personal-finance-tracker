@@ -1,0 +1,1 @@
+import "./globals.css"; export const metadata={title:"我的财务管家",description:"低维护个人财务管理"}; export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="zh-CN"><body>{children}</body></html>}
