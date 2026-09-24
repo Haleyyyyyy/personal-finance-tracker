@@ -56,3 +56,10 @@ test("跨页页眉页脚不会混入交易对手", () => {
   assert.equal(rows[0].counterparty, "便利店");
   assert.equal(rows[1].counterparty, "餐厅");
 });
+
+test("联机余额不会混入交易描述", () => {
+  const rows = parseCmbStatement("2026-09-01 | CNY | -88.00 | 12,345.67 | 消费 | 便利店");
+  assert.equal(rows[0].onlineBalance, 12345.67);
+  assert.equal(rows[0].transactionType, "消费");
+  assert.equal(rows[0].description, "消费 · 便利店");
+});

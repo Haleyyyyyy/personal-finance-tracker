@@ -12,6 +12,7 @@ export type ParsedTransaction = {
   date: string;
   currency: string;
   signedAmount: number;
+  onlineBalance: number | null;
   amount: number;
   transactionType: string;
   counterparty: string;
@@ -73,6 +74,9 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
     const allTokens = tail.split("|").map(clean).filter(Boolean);
     const footerIndex = allTokens.findIndex((x) => /\*{3}|温馨提示|^\d+\/\d+$/.test(x));
     const tokens = footerIndex >= 0 ? allTokens.slice(0, footerIndex) : allTokens;
+    const possibleBalance = tokens[0]?.replace(/,/g, "") ?? "";
+    const onlineBalance = /^[+-]?\d+\.\d{2}$/.test(possibleBalance) ? Number(possibleBalance) : null;
+    if (onlineBalance !== null) tokens.shift();
     const transactionType = tokens.shift() ?? "未识别";
     const counterparty = joinWrappedText(tokens.filter((x) => !/^(Date|Currency|Transaction|Amount|Balance|Transaction Type|Counter Party)$/.test(x)).join(" "));
     const classification = classify(transactionType, counterparty, signedAmount);
@@ -81,6 +85,7 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
       date,
       currency,
       signedAmount,
+      onlineBalance,
       amount: Math.abs(signedAmount),
       transactionType,
       counterparty,
@@ -93,7 +98,7 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
 
 function parseColumnLayout(text: string): ParsedTransaction[] {
   const lines = text.split(/\r?\n/);
-  const rowStart = /^(\d{4}-\d{2}-\d{2})\s+([A-Z]{3})\s+([+-]?[\d,]+\.\d{2})\s+[+-]?[\d,]+\.\d{2}\s+(.+)$/;
+  const rowStart = /^(\d{4}-\d{2}-\d{2})\s+([A-Z]{3})\s+([+-]?[\d,]+\.\d{2})\s+([+-]?[\d,]+\.\d{2})\s+(.+)$/;
   const starts = lines.flatMap((line, index) => rowStart.test(line.trim()) ? [index] : []);
   return starts.map((lineIndex, index) => {
     const match = lines[lineIndex].trim().match(rowStart)!;
@@ -103,13 +108,13 @@ function parseColumnLayout(text: string): ParsedTransaction[] {
     const wrapped = (boundary >= 0 ? continuation.slice(0, boundary) : continuation)
       .filter((line) => line.trim() && !/货币|交易金额|联机余额/.test(line))
       .map((line) => line.trim());
-    const columns = match[4].split(/\s{2,}/).map(clean).filter(Boolean);
+    const columns = match[5].split(/\s{2,}/).map(clean).filter(Boolean);
     const transactionType = columns.shift() ?? "未识别";
     const counterparty = joinWrappedText([...columns, ...wrapped].join(" "));
     const signedAmount = Number(match[3].replace(/,/g, ""));
     const classification = classify(transactionType, counterparty, signedAmount);
     const description = counterparty ? `${transactionType} · ${counterparty}` : transactionType;
-    return { date: match[1], currency: match[2], signedAmount, amount: Math.abs(signedAmount), transactionType, counterparty, description, budgetCategory: budgetCategoryFor(description, classification.kind), ...classification };
+    return { date: match[1], currency: match[2], signedAmount, onlineBalance: Number(match[4].replace(/,/g, "")), amount: Math.abs(signedAmount), transactionType, counterparty, description, budgetCategory: budgetCategoryFor(description, classification.kind), ...classification };
   });
 }
 
