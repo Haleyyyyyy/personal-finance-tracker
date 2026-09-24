@@ -61,6 +61,7 @@ export function budgetCategoryFor(description: string, kind: TransactionKind) {
 export function parseCmbStatement(text: string): ParsedTransaction[] {
   const normalized = text.replace(/\u00a0/g, " ");
   const starts = [...normalized.matchAll(dateStart)];
+  if (!starts.length) return parseColumnLayout(normalized);
   return starts.map((match, index) => {
     const header = match[0].replace(/\|/g, " ").replace(/\s+/g, " ").trim();
     const parts = header.split(" ");
@@ -87,6 +88,26 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
       budgetCategory: budgetCategoryFor(description, classification.kind),
       ...classification,
     };
+  });
+}
+
+function parseColumnLayout(text: string): ParsedTransaction[] {
+  const lines = text.split(/\r?\n/);
+  const rowStart = /^(\d{4}-\d{2}-\d{2})\s+([A-Z]{3})\s+([+-]?[\d,]+\.\d{2})\s+[+-]?[\d,]+\.\d{2}\s+(.+)$/;
+  const starts = lines.flatMap((line, index) => rowStart.test(line.trim()) ? [index] : []);
+  return starts.map((lineIndex, index) => {
+    const match = lines[lineIndex].trim().match(rowStart)!;
+    const end = index + 1 < starts.length ? starts[index + 1] : lines.length;
+    const wrapped = lines.slice(lineIndex + 1, end)
+      .filter((line) => line.trim() && !/记账日期|货币|交易金额|联机余额|第\s*\d+\s*页|招商银行/.test(line))
+      .map((line) => line.trim());
+    const columns = match[4].split(/\s{2,}/).map(clean).filter(Boolean);
+    const transactionType = columns.shift() ?? "未识别";
+    const counterparty = joinWrappedText([...columns, ...wrapped].join(" "));
+    const signedAmount = Number(match[3].replace(/,/g, ""));
+    const classification = classify(transactionType, counterparty, signedAmount);
+    const description = counterparty ? `${transactionType} · ${counterparty}` : transactionType;
+    return { date: match[1], currency: match[2], signedAmount, amount: Math.abs(signedAmount), transactionType, counterparty, description, budgetCategory: budgetCategoryFor(description, classification.kind), ...classification };
   });
 }
 

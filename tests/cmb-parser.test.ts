@@ -34,3 +34,14 @@ test("关键交易分类不会污染普通收支", () => {
   assert.equal(summary.income, 7755.36 + 24.31);
   assert.equal(summary.expense, 7.75 + 537.24);
 });
+
+test("支持招商银行空格分栏版式", () => {
+  const text = `记账日期 货币 交易金额 联机余额 交易摘要 对手信息
+2026-09-01     CNY        -88.00           1,000.00     消费                    便利店
+2026-09-02     CNY        +6,000.00        7,000.00     代发款项                工资`;
+  const rows = parseCmbStatement(text);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].kind, "expense");
+  assert.equal(rows[0].budgetCategory, "餐饮");
+  assert.equal(rows[1].kind, "income");
+});
