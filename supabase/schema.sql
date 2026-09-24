@@ -5,9 +5,9 @@ create table if not exists statements(id uuid primary key default gen_random_uui
 create table if not exists transactions(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users not null,account_id uuid references accounts(id),statement_id uuid references statements(id),category_id uuid references categories(id),transaction_date date not null,description text not null,amount numeric(18,2) not null,direction text not null check(direction in('income','expense','transfer')),status text default 'review',fingerprint text,raw_data jsonb default '{}'::jsonb,created_at timestamptz default now());
 create unique index if not exists transactions_user_fingerprint on transactions(user_id,fingerprint) where fingerprint is not null;
 alter table categories enable row level security;alter table accounts enable row level security;alter table statements enable row level security;alter table transactions enable row level security;
-create policy "own categories" on categories for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
-create policy "own accounts" on accounts for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
-create policy "own statements" on statements for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
-create policy "own transactions" on transactions for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+create policy "own categories" on categories for all to authenticated using((select auth.uid())=user_id) with check((select auth.uid())=user_id);
+create policy "own accounts" on accounts for all to authenticated using((select auth.uid())=user_id) with check((select auth.uid())=user_id);
+create policy "own statements" on statements for all to authenticated using((select auth.uid())=user_id) with check((select auth.uid())=user_id);
+create policy "own transactions" on transactions for all to authenticated using((select auth.uid())=user_id) with check((select auth.uid())=user_id);
 insert into storage.buckets(id,name,public) values('statements','statements',false) on conflict(id) do nothing;
-create policy "own statement files" on storage.objects for all using(bucket_id='statements' and (storage.foldername(name))[1]=auth.uid()::text) with check(bucket_id='statements' and (storage.foldername(name))[1]=auth.uid()::text);
+create policy "own statement files" on storage.objects for all to authenticated using(bucket_id='statements' and (storage.foldername(name))[1]=(select auth.uid())::text) with check(bucket_id='statements' and (storage.foldername(name))[1]=(select auth.uid())::text);
