@@ -18,3 +18,6 @@ npm install
 npm run dev
 
 > 不要把 Supabase service_role key 提交到 GitHub 或暴露给浏览器。
+
+
+<!-- deployment refresh: Next.js preset -->
