@@ -1,189 +1,54 @@
 "use client";
+import {FormEvent,useCallback,useEffect,useMemo,useRef,useState} from "react";
+import type {User} from "@supabase/supabase-js";
+import {ArrowDownLeft,ArrowUpRight,Check,ChevronRight,CircleAlert,FileText,Landmark,LoaderCircle,LogOut,MoreHorizontal,PiggyBank,Plus,Settings2,Upload,WalletCards} from "lucide-react";
+import {monthSummary,parseCmbStatement,transactionFingerprintSources,type TransactionKind} from "../lib/cmb-parser";
+import {defaultBudgets,monthlySeries,spendingByCategory} from "../lib/dashboard";
+import {extractPdfText,sha256,statementStoragePath} from "../lib/pdf";
+import {supabase} from "../lib/supabase";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { ArrowDownLeft, ArrowUpRight, Check, CircleAlert, FileText, Landmark, LoaderCircle, LogOut, PiggyBank, Plus, Upload, WalletCards } from "lucide-react";
-import { monthSummary, parseCmbStatement, transactionFingerprintSources, type TransactionKind } from "../lib/cmb-parser";
-import { extractPdfText, sha256, statementStoragePath } from "../lib/pdf";
-import { supabase } from "../lib/supabase";
+type Account={id:string;name:string;institution:string|null;currency:string|null;account_type:string|null;balance?:number|null};
+type Statement={id:string;file_name:string;status:string;period_start:string|null;period_end:string|null;created_at:string};
+type Tx={id:string;account_id:string;transaction_date:string;description:string;amount:number;direction:"income"|"expense"|"transfer";status:"review"|"confirmed";raw_data:{kind?:TransactionKind;currency?:string;transaction_type?:string;counterparty?:string;budget_category?:string}|null};
+type Budget={id:string;month:string;category:string;amount:number;color:string};
+type Notice={tone:"success"|"error"|"info";text:string}|null;
+type Tab="overview"|"accounts"|"transactions"|"budgets"|"investments"|"statements"|"review";
+const kindLabels:Record<TransactionKind,string>={income:"收入",expense:"普通消费",transfer:"资金转移",investment:"理财",fx:"结售汇",cash_withdrawal:"取现",interest:"利息",credit_card_repayment:"信用卡还款"};
+const monthKey=()=>new Date().toISOString().slice(0,7),monthStart=()=>`${monthKey()}-01`;
+const money=(value:number,currency="CNY")=>new Intl.NumberFormat("zh-CN",{style:"currency",currency:currency||"CNY",minimumFractionDigits:2}).format(value);
 
-type Account = { id: string; name: string; institution: string | null; currency: string | null; account_type: string | null };
-type Statement = { id: string; file_name: string; status: string; period_start: string | null; period_end: string | null; created_at: string };
-type Tx = {
-  id: string; transaction_date: string; description: string; amount: number; direction: "income" | "expense" | "transfer";
-  status: "review" | "confirmed"; raw_data: { kind?: TransactionKind; currency?: string; transaction_type?: string; counterparty?: string } | null;
-};
-type Notice = { tone: "success" | "error" | "info"; text: string } | null;
-type Tab = "overview" | "transactions" | "review" | "accounts" | "statements";
-
-const kindLabels: Record<TransactionKind, string> = {
-  income: "收入", expense: "普通消费", transfer: "资金转移", investment: "理财",
-  fx: "结售汇", cash_withdrawal: "取现", interest: "利息", credit_card_repayment: "信用卡还款",
-};
-
-export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [passcode, setPasscode] = useState("");
-  const [tab, setTab] = useState<Tab>("overview");
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [statements, setStatements] = useState<Statement[]>([]);
-  const [transactions, setTransactions] = useState<Tx[]>([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [showAccountForm, setShowAccountForm] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<Notice>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-
-  const loadData = useCallback(async () => {
-    setDataLoading(true);
-    const client = supabase();
-    const [accountResult, statementResult, transactionResult] = await Promise.all([
-      client.from("accounts").select("id,name,institution,currency,account_type").order("created_at"),
-      client.from("statements").select("id,file_name,status,period_start,period_end,created_at").order("created_at", { ascending: false }).limit(20),
-      client.from("transactions").select("id,transaction_date,description,amount,direction,status,raw_data").order("transaction_date", { ascending: false }).limit(500),
-    ]);
-    const error = accountResult.error ?? statementResult.error ?? transactionResult.error;
-    if (error) setNotice({ tone: "error", text: `读取数据失败：${error.message}` });
-    setAccounts((accountResult.data ?? []) as Account[]);
-    setStatements((statementResult.data ?? []) as Statement[]);
-    setTransactions((transactionResult.data ?? []) as Tx[]);
-    setSelectedAccount((current) => current || accountResult.data?.[0]?.id || "");
-    setDataLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const client = supabase();
-    client.auth.getUser().then(({ data }) => { setUser(data.user); setAuthLoading(false); });
-    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null); setAuthLoading(false);
-    });
-    return () => listener.subscription.unsubscribe();
-  }, []);
-  useEffect(() => { if (user) void loadData(); }, [user, loadData]);
-
-  const currentMonthTransactions = useMemo(() => {
-    const month = new Date().toISOString().slice(0, 7);
-    return transactions.filter((tx) => tx.transaction_date.startsWith(month)).map((tx) => ({
-      amount: Number(tx.amount), direction: tx.direction, status: tx.status,
-      kind: tx.raw_data?.kind ?? tx.direction,
-    }));
-  }, [transactions]);
-  const stats = useMemo(() => monthSummary(currentMonthTransactions), [currentMonthTransactions]);
-  const reviewCount = transactions.filter((tx) => tx.status === "review").length;
-
-  async function signInWithPasscode(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setNotice(null);
-    const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL ?? "haleycheung2@gmail.com";
-    const { error } = await supabase().auth.signInWithPassword({ email: ownerEmail, password: passcode });
-    setBusy(false);
-    if (error) {
-      setPasscode("");
-      setNotice({ tone: "error", text: "Passcode 不正确，请重试。" });
-    }
-  }
-
-  async function addAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!user) return;
-    setBusy(true); setNotice(null);
-    const form = new FormData(event.currentTarget);
-    const { data, error } = await supabase().from("accounts").insert({
-      user_id: user.id, name: form.get("name"), institution: form.get("institution"),
-      currency: form.get("currency"), account_type: form.get("account_type"),
-    }).select("id,name,institution,currency,account_type").single();
-    setBusy(false);
-    if (error) setNotice({ tone: "error", text: `账户创建失败：${error.message}` });
-    else {
-      setAccounts((items) => [...items, data as Account]); setSelectedAccount(data.id); setShowAccountForm(false);
-      setNotice({ tone: "success", text: "账户已创建，现在可以上传流水。" });
-    }
-  }
-
-  async function uploadStatement(file: File) {
-    if (!user || !selectedAccount) { setNotice({ tone: "error", text: "请先新增并选择一个银行账户。" }); return; }
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) { setNotice({ tone: "error", text: "第一版只支持文本型 PDF。" }); return; }
-    setBusy(true); setNotice({ tone: "info", text: "正在读取、分类并安全上传流水…" });
-    const client = supabase();
-    try {
-      const text = await extractPdfText(file);
-      const parsed = parseCmbStatement(text);
-      if (!parsed.length) throw new Error("没有识别到招商银行交易明细。请确认这是文本型 PDF，而不是扫描图片。");
-      const storagePath = await statementStoragePath(user.id, file.name);
-      const upload = await client.storage.from("statements").upload(storagePath, file, { contentType: "application/pdf", upsert: false });
-      if (upload.error) throw upload.error;
-      const dates = parsed.map((row) => row.date).sort();
-      const statementResult = await client.from("statements").insert({
-        user_id: user.id, account_id: selectedAccount, file_name: file.name, storage_path: storagePath,
-        status: "processing", period_start: dates[0], period_end: dates.at(-1),
-      }).select("id").single();
-      if (statementResult.error) { await client.storage.from("statements").remove([storagePath]); throw statementResult.error; }
-      const fingerprints = await Promise.all(transactionFingerprintSources(selectedAccount, parsed).map(sha256));
-      const existing = await client.from("transactions").select("fingerprint").in("fingerprint", fingerprints);
-      if (existing.error) throw existing.error;
-      const seen = new Set((existing.data ?? []).map((row) => row.fingerprint));
-      const fresh = parsed.flatMap((row, index) => seen.has(fingerprints[index]) ? [] : [{
-        user_id: user.id, account_id: selectedAccount, statement_id: statementResult.data.id,
-        transaction_date: row.date, description: row.description, amount: row.amount,
-        direction: row.direction, status: row.status, fingerprint: fingerprints[index],
-        raw_data: { kind: row.kind, currency: row.currency, signed_amount: row.signedAmount, transaction_type: row.transactionType, counterparty: row.counterparty },
-      }]);
-      if (fresh.length) {
-        const inserted = await client.from("transactions").insert(fresh);
-        if (inserted.error) throw inserted.error;
-      }
-      const review = fresh.filter((row) => row.status === "review").length;
-      await client.from("statements").update({ status: "parsed" }).eq("id", statementResult.data.id);
-      setNotice({ tone: "success", text: `解析完成：识别 ${parsed.length} 笔，新增 ${fresh.length} 笔，重复 ${parsed.length - fresh.length} 笔，待确认 ${review} 笔。` });
-      await loadData();
-    } catch (error) {
-      setNotice({ tone: "error", text: `上传失败：${error instanceof Error ? error.message : "未知错误"}` });
-    } finally {
-      setBusy(false); if (fileInput.current) fileInput.current.value = "";
-    }
-  }
-
-  async function confirmTransaction(id: string) {
-    const { error } = await supabase().from("transactions").update({ status: "confirmed" }).eq("id", id);
-    if (error) setNotice({ tone: "error", text: `确认失败：${error.message}` });
-    else setTransactions((items) => items.map((tx) => tx.id === id ? { ...tx, status: "confirmed" } : tx));
-  }
-
-  if (authLoading) return <Centered><LoaderCircle className="spin"/><p>正在恢复登录状态…</p></Centered>;
-  if (!user) return <main className="auth-shell"><div className="auth-card"><div className="logo">¥</div><h1>我的财务管家</h1><p>输入你的固定 passcode，继续管理个人财务。</p><form onSubmit={signInWithPasscode}><label>Passcode<input type="password" required autoFocus autoComplete="current-password" value={passcode} onChange={(event) => setPasscode(event.target.value)} placeholder="输入 passcode"/></label><button className="primary" disabled={busy}>{busy ? <LoaderCircle className="spin"/> : null}登录</button></form>{notice ? <NoticeView notice={notice}/> : null}<small>Passcode 由 Supabase Auth 安全验证，不会保存在网页代码中。</small></div></main>;
-
-  return <main className="app-shell"><aside><div className="brand"><div className="logo">¥</div><b>我的财务管家</b></div><nav>
-    <Nav active={tab === "overview"} onClick={() => setTab("overview")}>总览</Nav><Nav active={tab === "transactions"} onClick={() => setTab("transactions")}>最近交易</Nav><Nav active={tab === "review"} onClick={() => setTab("review")}>待确认 {reviewCount ? <em>{reviewCount}</em> : null}</Nav><Nav active={tab === "accounts"} onClick={() => setTab("accounts")}>账户</Nav><Nav active={tab === "statements"} onClick={() => setTab("statements")}>账单</Nav>
-  </nav><div className="privacy">🔒 个人财务空间<br/><small>Supabase RLS 数据保护</small><button onClick={() => supabase().auth.signOut()}><LogOut size={14}/>退出登录</button></div></aside>
-  <section className="content"><header><div><h1>{tabTitle(tab)}</h1><p>{tab === "overview" ? "真实流水，清楚归类" : "所有数据来自你的 Supabase 账户"}</p></div><div className="header-actions"><select value={selectedAccount} onChange={(event) => setSelectedAccount(event.target.value)} aria-label="选择账户"><option value="">选择账户</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><label className={`upload ${busy ? "disabled" : ""}`}><Upload size={17}/>{busy ? "处理中…" : "上传银行流水 PDF"}<input ref={fileInput} type="file" accept="application/pdf" hidden disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadStatement(file); }}/></label></div></header>
-    {notice ? <NoticeView notice={notice}/> : null}
-    {!accounts.length && !dataLoading ? <div className="setup panel"><Landmark/><div><h2>先创建第一个银行账户</h2><p>流水需要归属到一个账户，之后才能正确去重和汇总。</p></div><button className="primary" onClick={() => setShowAccountForm(true)}><Plus/>新增账户</button></div> : null}
-    {showAccountForm ? <AccountForm onSubmit={addAccount} onClose={() => setShowAccountForm(false)} busy={busy}/> : null}
-    {dataLoading ? <Centered><LoaderCircle className="spin"/><p>正在读取财务数据…</p></Centered> : null}
-    {!dataLoading && tab === "overview" ? <Overview stats={stats} transactions={transactions} reviewCount={reviewCount} setTab={setTab}/> : null}
-    {!dataLoading && tab === "transactions" ? <TransactionTable transactions={transactions} empty="还没有交易，上传招商银行文本型 PDF 开始。"/> : null}
-    {!dataLoading && tab === "review" ? <TransactionTable transactions={transactions.filter((tx) => tx.status === "review")} empty="没有待确认交易。" onConfirm={confirmTransaction}/> : null}
-    {!dataLoading && tab === "accounts" ? <Accounts accounts={accounts} onAdd={() => setShowAccountForm(true)}/> : null}
-    {!dataLoading && tab === "statements" ? <Statements statements={statements}/> : null}
-  </section></main>;
+export default function Home(){
+ const[user,setUser]=useState<User|null>(null),[authLoading,setAuthLoading]=useState(true),[dataLoading,setDataLoading]=useState(false),[busy,setBusy]=useState(false);
+ const[passcode,setPasscode]=useState(""),[tab,setTab]=useState<Tab>("overview"),[accounts,setAccounts]=useState<Account[]>([]),[statements,setStatements]=useState<Statement[]>([]),[transactions,setTransactions]=useState<Tx[]>([]),[budgets,setBudgets]=useState<Budget[]>([]);
+ const[analysisAccount,setAnalysisAccount]=useState("all"),[uploadAccount,setUploadAccount]=useState(""),[showAccountForm,setShowAccountForm]=useState(false),[editingBudget,setEditingBudget]=useState<Budget|null>(null),[notice,setNotice]=useState<Notice>(null);const fileInput=useRef<HTMLInputElement>(null);
+ const loadData=useCallback(async(ownerId?:string)=>{setDataLoading(true);const c=supabase();const[a,s,t,b]=await Promise.all([c.from("accounts").select("id,name,institution,currency,account_type,balance").order("created_at"),c.from("statements").select("id,file_name,status,period_start,period_end,created_at").order("created_at",{ascending:false}).limit(20),c.from("transactions").select("id,account_id,transaction_date,description,amount,direction,status,raw_data").order("transaction_date",{ascending:false}).limit(1000),c.from("budgets").select("id,month,category,amount,color").eq("month",monthStart()).order("category")]);const error=a.error??s.error??t.error??b.error;if(error)setNotice({tone:"error",text:`读取数据失败：${error.message}`});setAccounts((a.data??[])as Account[]);setStatements((s.data??[])as Statement[]);setTransactions((t.data??[])as Tx[]);setUploadAccount(v=>v||a.data?.[0]?.id||"");let rows=(b.data??[])as Budget[];if(!b.error&&!rows.length&&ownerId){const seeded=await c.from("budgets").upsert(defaultBudgets.map(x=>({...x,user_id:ownerId,month:monthStart()})),{onConflict:"user_id,month,category"}).select("id,month,category,amount,color");if(!seeded.error)rows=seeded.data as Budget[]}setBudgets(rows);setDataLoading(false)},[]);
+ useEffect(()=>{const c=supabase();c.auth.getUser().then(({data})=>{setUser(data.user);setAuthLoading(false)});const{data:l}=c.auth.onAuthStateChange((_e,s)=>{setUser(s?.user??null);setAuthLoading(false)});return()=>l.subscription.unsubscribe()},[]);useEffect(()=>{if(user)void loadData(user.id)},[user,loadData]);
+ const filtered=useMemo(()=>analysisAccount==="all"?transactions:transactions.filter(t=>t.account_id===analysisAccount),[transactions,analysisAccount]);const current=useMemo(()=>filtered.filter(t=>t.transaction_date.startsWith(monthKey())).map(t=>({amount:Number(t.amount),direction:t.direction,status:t.status,kind:t.raw_data?.kind??t.direction})),[filtered]);const stats=useMemo(()=>monthSummary(current),[current]);const reviewCount=transactions.filter(t=>t.status==="review").length;
+ async function signIn(e:FormEvent){e.preventDefault();setBusy(true);setNotice(null);const{error}=await supabase().auth.signInWithPassword({email:process.env.NEXT_PUBLIC_OWNER_EMAIL??"haleycheung2@gmail.com",password:passcode});setBusy(false);if(error){setPasscode("");setNotice({tone:"error",text:"Passcode 不正确，请重试。"})}}
+ async function addAccount(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!user)return;setBusy(true);const f=new FormData(e.currentTarget);const{data,error}=await supabase().from("accounts").insert({user_id:user.id,name:f.get("name"),institution:f.get("institution"),currency:f.get("currency"),account_type:f.get("account_type")}).select("id,name,institution,currency,account_type,balance").single();setBusy(false);if(error)setNotice({tone:"error",text:`账户创建失败：${error.message}`});else{setAccounts(v=>[...v,data as Account]);setUploadAccount(data.id);setShowAccountForm(false)}}
+ async function upload(file:File){if(!user||!uploadAccount){setNotice({tone:"error",text:"请先新增并选择流水归属账户。"});return}if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){setNotice({tone:"error",text:"第一版只支持文本型 PDF。"});return}setBusy(true);setNotice({tone:"info",text:"正在读取、分类并安全上传流水…"});const c=supabase();try{const parsed=parseCmbStatement(await extractPdfText(file));if(!parsed.length)throw new Error("没有识别到交易明细。请确认是招商银行文本型 PDF。");const path=await statementStoragePath(user.id,file.name),up=await c.storage.from("statements").upload(path,file,{contentType:"application/pdf",upsert:false});if(up.error)throw up.error;const dates=parsed.map(x=>x.date).sort(),sr=await c.from("statements").insert({user_id:user.id,account_id:uploadAccount,file_name:file.name,storage_path:path,status:"processing",period_start:dates[0],period_end:dates.at(-1)}).select("id").single();if(sr.error){await c.storage.from("statements").remove([path]);throw sr.error}const fps=await Promise.all(transactionFingerprintSources(uploadAccount,parsed).map(sha256)),ex=await c.from("transactions").select("fingerprint").in("fingerprint",fps);if(ex.error)throw ex.error;const seen=new Set((ex.data??[]).map(x=>x.fingerprint)),fresh=parsed.flatMap((r,i)=>seen.has(fps[i])?[]:[{user_id:user.id,account_id:uploadAccount,statement_id:sr.data.id,transaction_date:r.date,description:r.description,amount:r.amount,direction:r.direction,status:r.status,fingerprint:fps[i],raw_data:{kind:r.kind,currency:r.currency,signed_amount:r.signedAmount,transaction_type:r.transactionType,counterparty:r.counterparty,budget_category:r.budgetCategory}}]);if(fresh.length){const x=await c.from("transactions").insert(fresh);if(x.error)throw x.error}await c.from("statements").update({status:"parsed"}).eq("id",sr.data.id);setNotice({tone:"success",text:`解析完成：识别 ${parsed.length} 笔，新增 ${fresh.length} 笔，重复 ${parsed.length-fresh.length} 笔，待确认 ${fresh.filter(x=>x.status==="review").length} 笔。`});await loadData(user.id)}catch(e){setNotice({tone:"error",text:`上传失败：${e instanceof Error?e.message:"未知错误"}`})}finally{setBusy(false);if(fileInput.current)fileInput.current.value=""}}
+ async function confirm(id:string){const{error}=await supabase().from("transactions").update({status:"confirmed"}).eq("id",id);if(error)setNotice({tone:"error",text:`确认失败：${error.message}`});else setTransactions(v=>v.map(t=>t.id===id?{...t,status:"confirmed"}:t))}
+ async function saveBudget(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!editingBudget)return;const amount=Number(new FormData(e.currentTarget).get("amount"));if(amount<=0)return;setBusy(true);const{error}=await supabase().from("budgets").update({amount,updated_at:new Date().toISOString()}).eq("id",editingBudget.id);setBusy(false);if(error)setNotice({tone:"error",text:`预算更新失败：${error.message}`});else{setBudgets(v=>v.map(x=>x.id===editingBudget.id?{...x,amount}:x));setEditingBudget(null)}}
+ if(authLoading)return <Centered><LoaderCircle className="spin"/><p>正在恢复登录状态…</p></Centered>;if(!user)return <main className="auth-shell"><div className="auth-card"><div className="logo">¥</div><h1>我的财务管家</h1><p>一个只属于你的财务空间。输入固定 Passcode 继续。</p><form onSubmit={signIn}><label>Passcode<input type="password" required autoFocus value={passcode} onChange={e=>setPasscode(e.target.value)} placeholder="输入 Passcode"/></label><button className="primary" disabled={busy}>{busy&&<LoaderCircle className="spin"/>}登录</button></form>{notice&&<NoticeView notice={notice}/>}<small>由 Supabase Auth 安全验证</small></div></main>;
+ return <main className="app-shell"><header className="topbar"><div className="brand" onClick={()=>setTab("overview")}><div className="logo">¥</div><b>我的财务管家</b></div><nav className="topnav">{[["overview","总览"],["accounts","账户"],["transactions","交易"],["budgets","预算"],["investments","投资"]].map(([id,label])=><Nav key={id} active={tab===id} onClick={()=>setTab(id as Tab)}>{label}</Nav>)}</nav><div className="top-actions"><button className="icon-button review-shortcut" onClick={()=>setTab("review")}><CircleAlert/>{reviewCount>0&&<em>{reviewCount}</em>}</button><button className="icon-button" onClick={()=>supabase().auth.signOut()}><LogOut/></button></div></header><section className="content"><div className="page-heading"><div><p className="eyebrow">{new Date().getFullYear()} 年 {new Date().getMonth()+1} 月</p><h1>{tabTitle(tab)}</h1><p>{tab==="overview"?"掌握现金流，让每一笔钱都有方向":"所有数据均来自你的个人财务账户"}</p></div><div className="header-actions"><select value={analysisAccount} onChange={e=>setAnalysisAccount(e.target.value)}><option value="all">全部账户 · 合并分析</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select><div className="upload-group"><select value={uploadAccount} onChange={e=>setUploadAccount(e.target.value)}><option value="">流水归属账户</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select><label className={`upload ${busy?"disabled":""}`}><Upload/>{busy?"处理中…":"上传流水"}<input ref={fileInput} type="file" accept="application/pdf" hidden disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void upload(f)}}/></label></div></div></div>{notice&&<NoticeView notice={notice}/>} {!accounts.length&&!dataLoading&&<div className="setup panel"><Landmark/><div><h2>创建第一个银行账户</h2><p>流水需要归属账户，之后可合并分析多个账户。</p></div><button className="primary" onClick={()=>setShowAccountForm(true)}><Plus/>新增账户</button></div>}{showAccountForm&&<AccountForm onSubmit={addAccount} onClose={()=>setShowAccountForm(false)} busy={busy}/>} {editingBudget&&<BudgetModal budget={editingBudget} onSubmit={saveBudget} onClose={()=>setEditingBudget(null)} busy={busy}/>} {dataLoading&&<Centered><LoaderCircle className="spin"/><p>正在读取财务数据…</p></Centered>}{!dataLoading&&tab==="overview"&&<Overview stats={stats} transactions={filtered} accounts={accounts} budgets={budgets} reviewCount={reviewCount} setTab={setTab} onEditBudget={setEditingBudget}/>} {!dataLoading&&tab==="transactions"&&<Panel title="全部交易"><TransactionTable transactions={filtered} accounts={accounts} empty="还没有交易，上传招商银行文本型 PDF 开始。"/></Panel>} {!dataLoading&&tab==="review"&&<Panel title="待确认交易"><TransactionTable transactions={transactions.filter(t=>t.status==="review")} accounts={accounts} empty="没有待确认交易。" onConfirm={confirm}/></Panel>} {!dataLoading&&tab==="accounts"&&<Accounts accounts={accounts} onAdd={()=>setShowAccountForm(true)}/>} {!dataLoading&&tab==="budgets"&&<BudgetPanel budgets={budgets} transactions={filtered} onEdit={setEditingBudget} full/>} {!dataLoading&&tab==="investments"&&<Panel title="投资与非经营资金流"><TransactionTable transactions={filtered.filter(t=>["investment","fx"].includes(t.raw_data?.kind??""))} accounts={accounts} empty="还没有理财或结售汇记录。"/></Panel>} {!dataLoading&&tab==="statements"&&<Statements statements={statements}/>}</section></main>
 }
 
-function Nav({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button className={active ? "active" : ""} onClick={onClick}>{children}</button>; }
-function NoticeView({ notice }: { notice: NonNullable<Notice> }) { return <div className={`notice ${notice.tone}`}>{notice.tone === "success" ? <Check/> : <CircleAlert/>}<span>{notice.text}</span></div>; }
-function Centered({ children }: { children: React.ReactNode }) { return <div className="centered">{children}</div>; }
-function tabTitle(tab: Tab) { return ({ overview: "财务总览", transactions: "最近交易", review: "待确认", accounts: "银行账户", statements: "账单记录" })[tab]; }
-function money(value: number, currency = "CNY") { return new Intl.NumberFormat("zh-CN", { style: "currency", currency }).format(value); }
-
-function Overview({ stats, transactions, reviewCount, setTab }: { stats: ReturnType<typeof monthSummary>; transactions: Tx[]; reviewCount: number; setTab: (tab: Tab) => void }) {
-  return <><div className="cards"><Card icon={<ArrowDownLeft/>} title="本月收入" value={money(stats.income)}/><Card icon={<ArrowUpRight/>} title="本月普通消费" value={money(stats.expense)}/><Card icon={<PiggyBank/>} title="本月结余" value={money(stats.balance)}/><Card icon={<WalletCards/>} title="储蓄率" value={`${stats.savingsRate}%`}/></div><div className="grid"><div className="panel"><div className="panel-title"><h2>最近交易</h2><button onClick={() => setTab("transactions")}>查看全部</button></div><TransactionTable transactions={transactions.slice(0, 6)} compact empty="上传流水后，交易会显示在这里。"/></div><div className="panel insight"><h2>分类口径</h2><p>Dashboard 只统计已确认的普通收入、利息和普通消费。资金转移、信用卡还款、理财、结售汇和取现不会误算成日常收支。</p>{reviewCount ? <button onClick={() => setTab("review")}>{reviewCount} 笔交易等待确认 →</button> : <span className="all-clear"><Check/>没有待确认交易</span>}</div></div></>;
-}
-function Card({ icon, title, value }: { icon: React.ReactNode; title: string; value: string }) { return <div className="card"><div>{icon}<span>{title}</span></div><strong>{value}</strong></div>; }
-function TransactionTable({ transactions, empty, compact = false, onConfirm }: { transactions: Tx[]; empty: string; compact?: boolean; onConfirm?: (id: string) => void }) {
-  if (!transactions.length) return <div className="empty">{empty}</div>;
-  return <div className="table-wrap"><table><thead><tr><th>日期</th><th>交易</th><th>分类</th><th>状态</th><th>金额</th>{onConfirm ? <th/> : null}</tr></thead><tbody>{transactions.map((tx) => { const kind = (tx.raw_data?.kind ?? tx.direction) as TransactionKind; const currency = tx.raw_data?.currency ?? "CNY"; return <tr key={tx.id}><td className="muted">{tx.transaction_date.slice(5)}</td><td><b>{tx.description}</b>{!compact && tx.raw_data?.transaction_type ? <small>{tx.raw_data.transaction_type}</small> : null}</td><td><span className={`tag kind-${kind}`}>{kindLabels[kind]}</span></td><td><span className={tx.status === "review" ? "status warn" : "status ok"}>{tx.status === "review" ? "待确认" : "已确认"}</span></td><td className={tx.direction === "income" ? "plus amount" : tx.direction === "expense" ? "minus amount" : "muted amount"}>{tx.direction === "income" ? "+" : tx.direction === "expense" ? "−" : ""}{money(Number(tx.amount), currency)}</td>{onConfirm ? <td><button className="confirm" onClick={() => onConfirm(tx.id)}><Check/>确认</button></td> : null}</tr>; })}</tbody></table></div>;
-}
-function AccountForm({ onSubmit, onClose, busy }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; onClose: () => void; busy: boolean }) {
-  return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><h2>新增银行账户</h2><label>账户名称<input name="name" required placeholder="例如：招商银行储蓄卡"/></label><label>银行<input name="institution" defaultValue="招商银行"/></label><div className="form-row"><label>币种<select name="currency" defaultValue="CNY"><option>CNY</option><option>HKD</option><option>USD</option><option>AUD</option></select></label><label>账户类型<select name="account_type" defaultValue="checking"><option value="checking">储蓄 / 活期</option><option value="credit">信用卡</option><option value="investment">投资账户</option></select></label></div><div className="modal-actions"><button type="button" onClick={onClose}>取消</button><button className="primary" disabled={busy}>保存账户</button></div></form></div>;
-}
-function Accounts({ accounts, onAdd }: { accounts: Account[]; onAdd: () => void }) { return <div className="panel"><div className="panel-title"><h2>我的账户</h2><button className="primary small" onClick={onAdd}><Plus/>新增账户</button></div>{accounts.length ? <div className="account-list">{accounts.map((account) => <div className="account" key={account.id}><Landmark/><div><b>{account.name}</b><span>{account.institution || "未填写银行"} · {account.currency || "CNY"}</span></div></div>)}</div> : <div className="empty">还没有账户。</div>}</div>; }
-function Statements({ statements }: { statements: Statement[] }) { return <div className="panel"><h2>已上传账单</h2>{statements.length ? <div className="statement-list">{statements.map((statement) => <div className="statement" key={statement.id}><FileText/><div><b>{statement.file_name}</b><span>{statement.period_start && statement.period_end ? `${statement.period_start} 至 ${statement.period_end}` : "账期识别中"}</span></div><span className="status ok">{statement.status === "parsed" ? "已解析" : statement.status}</span></div>)}</div> : <div className="empty">还没有上传账单。</div>}</div>; }
+function Overview({stats,transactions,accounts,budgets,reviewCount,setTab,onEditBudget}:{stats:ReturnType<typeof monthSummary>;transactions:Tx[];accounts:Account[];budgets:Budget[];reviewCount:number;setTab:(t:Tab)=>void;onEditBudget:(b:Budget)=>void}){const series=monthlySeries(transactions),spending=spendingByCategory(transactions,monthKey()),netWorth=accounts.reduce((s,a)=>s+Number(a.balance??0),0);return <><div className="metric-grid"><Metric icon={<ArrowDownLeft/>} label="本月收入" value={money(stats.income)} tone="green"/><Metric icon={<ArrowUpRight/>} label="本月普通消费" value={money(stats.expense)} tone="red"/><Metric icon={<PiggyBank/>} label="本月结余" value={money(stats.balance)} tone="blue"/><Metric icon={<WalletCards/>} label="储蓄率" value={`${stats.savingsRate}%`} tone="gold"/></div><div className="hero-grid"><section className="panel net-worth"><Heading kicker="资产概览" title="总净资产"><button className="text-button" onClick={()=>setTab("accounts")}>查看账户 <ChevronRight/></button></Heading><strong className="hero-number">{money(netWorth)}</strong><span className="growth-pill">↑ 本月 {stats.balance>=0?"+":""}{netWorth?((stats.balance/Math.abs(netWorth))*100).toFixed(1):"0.0"}%</span><LineChart series={series}/></section><BudgetPanel budgets={budgets} transactions={transactions} onEdit={onEditBudget}/></div><div className="dashboard-grid"><SpendingPanel spending={spending}/><CashflowPanel series={series}/><section className="panel recent"><Heading kicker="实时记录" title="最近交易"><button className="text-button" onClick={()=>setTab("transactions")}>查看全部 <ChevronRight/></button></Heading><RecentTransactions transactions={transactions.slice(0,5)} accounts={accounts}/>{reviewCount>0&&<button className="review-banner" onClick={()=>setTab("review")}><CircleAlert/>{reviewCount} 笔交易等待确认 <ChevronRight/></button>}</section></div><AccountsSummary accounts={accounts} onOpen={()=>setTab("accounts")} onStatements={()=>setTab("statements")}/></>}
+function BudgetPanel({budgets,transactions,onEdit,full=false}:{budgets:Budget[];transactions:Tx[];onEdit:(b:Budget)=>void;full?:boolean}){const spending=spendingByCategory(transactions,monthKey()),rows=budgets.map(b=>({...b,used:spending.get(b.category)??0})),over=rows.filter(r=>r.used>Number(r.amount)).length,near=rows.filter(r=>r.used<=Number(r.amount)&&r.used/Number(r.amount)>=.85).length,onTrack=rows.length-over-near,remaining=rows.reduce((s,r)=>s+Math.max(0,Number(r.amount)-r.used),0);return <section className={`panel budget-panel ${full?"full-budget":""}`}><Heading kicker="本月计划" title="预算管控"><button className="icon-button"><MoreHorizontal/></button></Heading><div className="budget-summary"><div><strong>{onTrack} 个正常{over?`，${over} 个超支`:""}</strong><span>{near?`${near} 个接近预算 · `:""}剩余可花 {money(remaining)}</span></div><span className={over?"summary-dot danger":"summary-dot"}/></div><div className="budget-list">{rows.map(r=>{const ratio=r.used/Number(r.amount),state=ratio>1?"over":ratio>=.85?"near":"normal";return <button className="budget-row" key={r.id} onClick={()=>onEdit(r)}><div className="budget-meta"><span><i style={{background:state==="over"?"#c64b4b":state==="near"?"#d9943d":r.color}}/>{r.category}</span><b className={state}>{money(r.used)} <small>/ {money(Number(r.amount))}</small></b></div><div className="progress"><i className={state} style={{width:`${Math.min(100,ratio*100)}%`,background:state==="normal"?r.color:undefined}}/></div><div className="budget-foot"><span>{Math.round(ratio*100)}% 已用</span><span>{ratio>1?`超支 ${money(r.used-Number(r.amount))}`:`剩余 ${money(Number(r.amount)-r.used)}`}</span></div></button>})}</div><p className="budget-hint"><Settings2/>点击分类可快速调整预算。</p></section>}
+function SpendingPanel({spending}:{spending:Map<string,number>}){const palette:Record<string,string>=Object.fromEntries(defaultBudgets.map(x=>[x.category,x.color])),entries=[...spending.entries()].sort((a,b)=>b[1]-a[1]),total=entries.reduce((s,[,v])=>s+v,0);let cursor=0;const gradient=entries.length?entries.map(([c,v])=>{const start=cursor;cursor+=total?v/total*100:0;return `${palette[c]??"#82908a"} ${start}% ${cursor}%`}).join(","):"#e9eeeb 0 100%";return <section className="panel spending"><span className="section-kicker">消费洞察</span><h2>本月支出结构</h2><div className="donut-wrap"><div className="donut" style={{background:`conic-gradient(${gradient})`}}><div><small>普通消费</small><strong>{money(total)}</strong></div></div><div className="legend">{entries.length?entries.slice(0,5).map(([c,v])=><div key={c}><span><i style={{background:palette[c]??"#82908a"}}/>{c}</span><b>{total?Math.round(v/total*100):0}%</b></div>):<p>上传流水后显示分类结构</p>}</div></div></section>}
+function CashflowPanel({series}:{series:ReturnType<typeof monthlySeries>}){const max=Math.max(1,...series.flatMap(x=>[x.income,x.expense]));return <section className="panel cashflow"><span className="section-kicker">现金流</span><h2>收入与支出</h2><div className="chart-legend"><span><i className="income"/>收入</span><span><i className="expense"/>支出</span></div><div className="bar-chart">{series.map(x=><div className="bar-group" key={x.key}><div className="bars"><i className="income" style={{height:`${Math.max(3,x.income/max*100)}%`}}/><i className="expense" style={{height:`${Math.max(3,x.expense/max*100)}%`}}/></div><span>{x.label}</span></div>)}</div></section>}
+function LineChart({series}:{series:ReturnType<typeof monthlySeries>}){let running=0;const p=series.map(x=>running+=x.income-x.expense),min=Math.min(0,...p),max=Math.max(1,...p),coords=p.map((v,i)=>`${i*(100/Math.max(1,p.length-1))},${80-(v-min)/(max-min||1)*60}`).join(" ");return <div className="line-chart"><svg viewBox="0 0 100 90" preserveAspectRatio="none"><defs><linearGradient id="line-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2b755b" stopOpacity=".22"/><stop offset="1" stopColor="#2b755b" stopOpacity="0"/></linearGradient></defs><polygon points={`0,90 ${coords} 100,90`} fill="url(#line-fill)"/><polyline points={coords} fill="none" stroke="#246c52" strokeWidth="2" vectorEffect="non-scaling-stroke"/></svg><div>{series.map(x=><span key={x.key}>{x.label}</span>)}</div></div>}
+function RecentTransactions({transactions,accounts}:{transactions:Tx[];accounts:Account[]}){if(!transactions.length)return <div className="empty compact-empty">上传流水后，最近交易会显示在这里。</div>;const am=new Map(accounts.map(a=>[a.id,a.name]));return <div className="recent-list">{transactions.map(t=>{const k=(t.raw_data?.kind??t.direction)as TransactionKind;return <div className="recent-row" key={t.id}><i className={`transaction-dot kind-${k}`}/><div><b>{t.description}</b><span>{t.raw_data?.budget_category??kindLabels[k]} · {am.get(t.account_id)??"银行账户"}</span></div><time>{t.transaction_date.slice(5)}</time><strong className={t.direction==="income"?"plus":t.direction==="expense"?"minus":"muted"}>{t.direction==="income"?"+":t.direction==="expense"?"−":""}{money(Number(t.amount),t.raw_data?.currency)}</strong></div>})}</div>}
+function AccountsSummary({accounts,onOpen,onStatements}:{accounts:Account[];onOpen:()=>void;onStatements:()=>void}){return <section className="panel accounts-summary"><Heading kicker="资产分布" title="账户汇总"><div><button className="text-button" onClick={onStatements}>账单记录</button><button className="text-button" onClick={onOpen}>管理账户 <ChevronRight/></button></div></Heading><div className="account-groups">{[["储蓄账户","checking"],["信用卡","credit"],["投资账户","investment"]].map(([label,type])=>{const m=accounts.filter(a=>(a.account_type??"checking")===type);return <div className="account-group" key={type}><span>{label}</span><strong>{money(m.reduce((s,a)=>s+Number(a.balance??0),0))}</strong><small>{m.length} 个账户</small></div>})}</div></section>}
+function Heading({kicker,title,children}:{kicker:string;title:string;children?:React.ReactNode}){return <div className="panel-heading"><div><span className="section-kicker">{kicker}</span><h2>{title}</h2></div>{children}</div>}
+function Nav({active,onClick,children}:{active:boolean;onClick:()=>void;children:React.ReactNode}){return <button className={active?"active":""} onClick={onClick}>{children}</button>}
+function Panel({title,children}:{title:string;children:React.ReactNode}){return <section className="panel"><h2>{title}</h2>{children}</section>}
+function Metric({icon,label,value,tone}:{icon:React.ReactNode;label:string;value:string;tone:string}){return <div className="metric"><div className={`metric-icon ${tone}`}>{icon}</div><div><span>{label}</span><strong>{value}</strong></div></div>}
+function NoticeView({notice}:{notice:NonNullable<Notice>}){return <div className={`notice ${notice.tone}`}>{notice.tone==="success"?<Check/>:<CircleAlert/>}<span>{notice.text}</span></div>}
+function Centered({children}:{children:React.ReactNode}){return <div className="centered">{children}</div>}
+function tabTitle(t:Tab){return({overview:"财务总览",transactions:"全部交易",review:"待确认交易",accounts:"账户管理",budgets:"预算管控",investments:"投资概览",statements:"账单记录"})[t]}
+function TransactionTable({transactions,accounts,empty,onConfirm}:{transactions:Tx[];accounts:Account[];empty:string;onConfirm?:(id:string)=>void}){if(!transactions.length)return <div className="empty">{empty}</div>;const am=new Map(accounts.map(a=>[a.id,a.name]));return <div className="table-wrap"><table><thead><tr><th>日期</th><th>交易</th><th>账户</th><th>分类</th><th>状态</th><th>金额</th>{onConfirm&&<th/>}</tr></thead><tbody>{transactions.map(t=>{const k=(t.raw_data?.kind??t.direction)as TransactionKind;return <tr key={t.id}><td className="muted">{t.transaction_date}</td><td><b>{t.description}</b><small>{t.raw_data?.counterparty||t.raw_data?.transaction_type}</small></td><td>{am.get(t.account_id)??"银行账户"}</td><td><span className={`tag kind-${k}`}>{t.raw_data?.budget_category??kindLabels[k]}</span></td><td><span className={t.status==="review"?"status warn":"status ok"}>{t.status==="review"?"待确认":"已确认"}</span></td><td className={t.direction==="income"?"plus amount":t.direction==="expense"?"minus amount":"muted amount"}>{t.direction==="income"?"+":t.direction==="expense"?"−":""}{money(Number(t.amount),t.raw_data?.currency)}</td>{onConfirm&&<td><button className="confirm" onClick={()=>onConfirm(t.id)}><Check/>确认</button></td>}</tr>})}</tbody></table></div>}
+function AccountForm({onSubmit,onClose,busy}:{onSubmit:(e:FormEvent<HTMLFormElement>)=>void;onClose:()=>void;busy:boolean}){return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><h2>新增银行账户</h2><label>账户名称<input name="name" required placeholder="例如：招商银行储蓄卡"/></label><label>银行<input name="institution" defaultValue="招商银行"/></label><div className="form-row"><label>币种<select name="currency"><option>CNY</option><option>HKD</option><option>USD</option><option>AUD</option></select></label><label>账户类型<select name="account_type"><option value="checking">储蓄 / 活期</option><option value="credit">信用卡</option><option value="investment">投资账户</option></select></label></div><div className="modal-actions"><button type="button" onClick={onClose}>取消</button><button className="primary" disabled={busy}>保存账户</button></div></form></div>}
+function BudgetModal({budget,onSubmit,onClose,busy}:{budget:Budget;onSubmit:(e:FormEvent<HTMLFormElement>)=>void;onClose:()=>void;busy:boolean}){return <div className="modal-backdrop"><form className="modal" onSubmit={onSubmit}><span className="section-kicker">快速调整</span><h2>{budget.category}预算</h2><p>修改本月预算金额，支出进度会立即重新计算。</p><label>预算金额（人民币）<input name="amount" type="number" min="1" step="100" defaultValue={budget.amount} required autoFocus/></label><div className="modal-actions"><button type="button" onClick={onClose}>取消</button><button className="primary" disabled={busy}>保存预算</button></div></form></div>}
+function Accounts({accounts,onAdd}:{accounts:Account[];onAdd:()=>void}){return <section className="panel"><div className="panel-heading"><h2>我的账户</h2><button className="primary small" onClick={onAdd}><Plus/>新增账户</button></div>{accounts.length?<div className="account-list">{accounts.map(a=><div className="account" key={a.id}><Landmark/><div><b>{a.name}</b><span>{a.institution||"未填写银行"} · {a.currency||"CNY"}</span></div><strong>{money(Number(a.balance??0),a.currency??"CNY")}</strong></div>)}</div>:<div className="empty">还没有账户。</div>}</section>}
+function Statements({statements}:{statements:Statement[]}){return <section className="panel"><h2>已上传账单</h2>{statements.length?<div className="statement-list">{statements.map(s=><div className="statement" key={s.id}><FileText/><div><b>{s.file_name}</b><span>{s.period_start&&s.period_end?`${s.period_start} 至 ${s.period_end}`:"账期识别中"}</span></div><span className="status ok">{s.status==="parsed"?"已解析":s.status}</span></div>)}</div>:<div className="empty">还没有上传账单。</div>}</section>}

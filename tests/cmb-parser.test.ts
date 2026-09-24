@@ -21,7 +21,9 @@ test("同日同额交易保留次数且重复上传仍生成稳定 fingerprint",
 test("关键交易分类不会污染普通收支", () => {
   const rows = parseCmbStatement(cmbFixture);
   assert.equal(rows.find((row) => row.counterparty.includes("UNIQLO"))!.kind, "expense");
+  assert.equal(rows.find((row) => row.counterparty.includes("UNIQLO"))!.budgetCategory, "购物");
   assert.equal(rows.find((row) => row.counterparty.includes("ファミリー"))!.kind, "expense");
+  assert.equal(rows.find((row) => row.counterparty.includes("ファミリー"))!.budgetCategory, "餐饮");
   assert.deepEqual(rows.filter((row) => row.kind === "fx").map((row) => row.direction), ["transfer", "transfer"]);
   assert.deepEqual(rows.filter((row) => row.kind === "investment").map((row) => row.direction), ["transfer", "transfer"]);
   assert.equal(rows.find((row) => row.kind === "credit_card_repayment")!.direction, "transfer");

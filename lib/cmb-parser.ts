@@ -18,6 +18,7 @@ export type ParsedTransaction = {
   description: string;
   direction: "income" | "expense" | "transfer";
   kind: TransactionKind;
+  budgetCategory: string | null;
   status: "confirmed" | "review";
 };
 
@@ -47,6 +48,16 @@ function classify(type: string, counterparty: string, signedAmount: number) {
   return { direction: "expense" as const, kind: "expense" as const, status: "review" as const };
 }
 
+export function budgetCategoryFor(description: string, kind: TransactionKind) {
+  if (kind !== "expense") return null;
+  if (/餐|咖啡|茶|饮品|便利店|ファミリー|Seven-Eleven|SEIYU|美团|饿了么/i.test(description)) return "餐饮";
+  if (/UNIQLO|银座|商场|京东|淘宝|LOFT|PARCO|MATSUYA|MIKIMOTO/i.test(description)) return "购物";
+  if (/滴滴|地铁|铁路|航空|机场|打车|公交|加油/i.test(description)) return "交通";
+  if (/宠物|医院|药房|诊所|体检/i.test(description)) return "健康";
+  if (/电影|游戏|娱乐|演出|旅行|酒店/i.test(description)) return "娱乐";
+  return "其他";
+}
+
 export function parseCmbStatement(text: string): ParsedTransaction[] {
   const normalized = text.replace(/\u00a0/g, " ");
   const starts = [...normalized.matchAll(dateStart)];
@@ -64,6 +75,7 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
     const transactionType = tokens.shift() ?? "未识别";
     const counterparty = joinWrappedText(tokens.filter((x) => !/^(Date|Currency|Transaction|Amount|Balance|Transaction Type|Counter Party)$/.test(x)).join(" "));
     const classification = classify(transactionType, counterparty, signedAmount);
+    const description = counterparty ? `${transactionType} · ${counterparty}` : transactionType;
     return {
       date,
       currency,
@@ -71,7 +83,8 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
       amount: Math.abs(signedAmount),
       transactionType,
       counterparty,
-      description: counterparty ? `${transactionType} · ${counterparty}` : transactionType,
+      description,
+      budgetCategory: budgetCategoryFor(description, classification.kind),
       ...classification,
     };
   });
