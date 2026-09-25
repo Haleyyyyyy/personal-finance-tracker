@@ -1,3 +1,5 @@
+import {classifyTransaction,legacyCategoryKeys,type TransactionType} from "./classification.ts";
+
 export type TransactionKind =
   | "income"
   | "expense"
@@ -20,6 +22,10 @@ export type ParsedTransaction = {
   direction: "income" | "expense" | "transfer";
   kind: TransactionKind;
   budgetCategory: string | null;
+  categoryKey: string | null;
+  subcategoryKey: string | null;
+  transactionTypeKey: TransactionType;
+  classificationConfidence: number;
   status: "confirmed" | "review";
 };
 
@@ -59,6 +65,12 @@ export function budgetCategoryFor(description: string, kind: TransactionKind) {
   return "其他";
 }
 
+function structured(description:string,signedAmount:number,legacyKind:TransactionKind){
+  const result=classifyTransaction(description,signedAmount);
+  const fallback:TransactionType=legacyKind==="credit_card_repayment"?"card_repayment":legacyKind==="cash_withdrawal"?"cash":legacyKind;
+  return result.transactionType==="review"&&result.confidence>=.4?{...result,transactionType:fallback}:result;
+}
+
 export function parseCmbStatement(text: string): ParsedTransaction[] {
   const normalized = text.replace(/\u00a0/g, " ");
   const starts = [...normalized.matchAll(dateStart)];
@@ -81,6 +93,7 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
     const counterparty = joinWrappedText(tokens.filter((x) => !/^(Date|Currency|Transaction|Amount|Balance|Transaction Type|Counter Party)$/.test(x)).join(" "));
     const classification = classify(transactionType, counterparty, signedAmount);
     const description = counterparty ? `${transactionType} · ${counterparty}` : transactionType;
+    const detail=structured(description,signedAmount,classification.kind),legacyBudget=budgetCategoryFor(description, classification.kind);
     return {
       date,
       currency,
@@ -90,8 +103,13 @@ export function parseCmbStatement(text: string): ParsedTransaction[] {
       transactionType,
       counterparty,
       description,
-      budgetCategory: budgetCategoryFor(description, classification.kind),
+      budgetCategory: legacyBudget,
+      categoryKey: detail.categoryKey??(classification.kind==="expense"?legacyCategoryKeys[legacyBudget??""]??"other":null),
+      subcategoryKey: detail.subcategoryKey,
+      transactionTypeKey: detail.transactionType,
+      classificationConfidence: detail.confidence,
       ...classification,
+      status: detail.review?"review":classification.status,
     };
   });
 }
@@ -114,7 +132,8 @@ function parseColumnLayout(text: string): ParsedTransaction[] {
     const signedAmount = Number(match[3].replace(/,/g, ""));
     const classification = classify(transactionType, counterparty, signedAmount);
     const description = counterparty ? `${transactionType} · ${counterparty}` : transactionType;
-    return { date: match[1], currency: match[2], signedAmount, onlineBalance: Number(match[4].replace(/,/g, "")), amount: Math.abs(signedAmount), transactionType, counterparty, description, budgetCategory: budgetCategoryFor(description, classification.kind), ...classification };
+    const detail=structured(description,signedAmount,classification.kind),legacyBudget=budgetCategoryFor(description, classification.kind);
+    return { date: match[1], currency: match[2], signedAmount, onlineBalance: Number(match[4].replace(/,/g, "")), amount: Math.abs(signedAmount), transactionType, counterparty, description, budgetCategory: legacyBudget,categoryKey:detail.categoryKey??(classification.kind==="expense"?legacyCategoryKeys[legacyBudget??""]??"other":null),subcategoryKey:detail.subcategoryKey,transactionTypeKey:detail.transactionType,classificationConfidence:detail.confidence,...classification,status:detail.review?"review":classification.status };
   });
 }
 
@@ -128,11 +147,11 @@ export function transactionFingerprintSources(accountId: string, transactions: P
   });
 }
 
-export function monthSummary(transactions: Array<Pick<ParsedTransaction, "amount" | "direction" | "kind" | "status">>) {
+export function monthSummary(transactions: Array<Pick<ParsedTransaction, "amount" | "direction" | "kind" | "status"> & {transactionTypeKey?:TransactionType|null}>) {
   return transactions.reduce((total, tx) => {
     if (tx.status !== "confirmed") return total;
-    if (tx.direction === "income" && (tx.kind === "income" || tx.kind === "interest")) total.income += tx.amount;
-    if (tx.direction === "expense" && tx.kind === "expense") total.expense += tx.amount;
+    if (tx.transactionTypeKey ? (tx.transactionTypeKey === "income" || tx.transactionTypeKey === "interest") : tx.direction === "income" && (tx.kind === "income" || tx.kind === "interest")) total.income += tx.amount;
+    if (tx.transactionTypeKey ? tx.transactionTypeKey === "expense" : tx.direction === "expense" && tx.kind === "expense") total.expense += tx.amount;
     total.balance = total.income - total.expense;
     total.savingsRate = total.income ? Math.round((total.balance / total.income) * 100) : 0;
     return total;

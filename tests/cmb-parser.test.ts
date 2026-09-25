@@ -32,7 +32,7 @@ test("关键交易分类不会污染普通收支", () => {
   assert.equal(rows.find((row) => row.transactionType === "汇入汇款")!.status, "review");
   const summary = monthSummary(rows);
   assert.equal(summary.income, 7755.36 + 24.31);
-  assert.equal(summary.expense, 7.75 + 537.24);
+  assert.equal(summary.expense, 537.24);
 });
 
 test("支持招商银行空格分栏版式", () => {
