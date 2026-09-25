@@ -1,5 +1,5 @@
 import type { TransactionKind } from "./cmb-parser";
-import {legacyCategoryKeys,type TransactionType} from "./classification.ts";
+import {expenseCategories,legacyCategoryKeys,type TransactionType} from "./classification.ts";
 
 export type DashboardTransaction = {
   transaction_date: string;
@@ -43,14 +43,8 @@ export function rangeLabel(start: string, end: string) {
   return start === end ? format(start) : `${format(start)} – ${format(end)}`;
 }
 
-export const defaultBudgets = [
-  { category: "food", amount: 3000, color: "#1f6b52" },
-  { category: "shopping", amount: 4000, color: "#4f7cac" },
-  { category: "transportation", amount: 1500, color: "#4b968e" },
-  { category: "pets", amount: 1000, color: "#b98652" },
-  { category: "subscriptions", amount: 500, color: "#7867a8" },
-  { category: "other", amount: 1800, color: "#82908a" },
-];
+const suggestedBudgetAmounts:Record<string,number>={food:3000,shopping:4000,transportation:1500,housing:6000,travel:2500,health:1200,pets:1000,subscriptions:500,other:1800};
+export const defaultBudgets=expenseCategories.map(category=>({category:category.key,amount:suggestedBudgetAmounts[category.key]??1500,color:category.color}));
 
 export function isOperatingIncome(tx: DashboardTransaction) {
   if(tx.transaction_type)return tx.status === "confirmed" && (tx.transaction_type === "income" || tx.transaction_type === "interest");

@@ -28,3 +28,7 @@ alter table transactions add column if not exists classification_confidence nume
 create table if not exists tags(id uuid primary key default gen_random_uuid(),user_id uuid not null references auth.users(id) on delete cascade,name text not null,created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create table if not exists transaction_tags(transaction_id uuid not null references transactions(id) on delete cascade,tag_id uuid not null references tags(id) on delete cascade,user_id uuid not null references auth.users(id) on delete cascade,created_at timestamptz not null default now(),primary key(transaction_id,tag_id));
 alter table tags enable row level security;alter table transaction_tags enable row level security;
+
+-- Accounts use soft archival so historical statements and transactions remain intact.
+alter table accounts add column if not exists is_archived boolean not null default false;
+alter table accounts add column if not exists updated_at timestamptz not null default now();

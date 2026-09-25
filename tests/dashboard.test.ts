@@ -22,3 +22,17 @@ test("KPI 明细只使用同一分类口径", () => {
   assert.equal(sample.filter(isOperatingIncome).reduce((sum, item) => sum + item.amount, 0), 105);
   assert.equal(sample.filter(isOrdinaryExpense).reduce((sum, item) => sum + item.amount, 0), 30);
 });
+
+test("默认预算覆盖全部一级消费分类", async () => {
+  const [{defaultBudgets},{expenseCategories}]=await Promise.all([import("../lib/dashboard.ts"),import("../lib/classification.ts")]);
+  assert.deepEqual(new Set(defaultBudgets.map(item=>item.category)),new Set(expenseCategories.map(item=>item.key)));
+});
+
+test("预算只统计结构化 Expense 交易", async () => {
+  const {spendingByCategory}=await import("../lib/dashboard.ts");
+  const rows=[
+    {transaction_date:"2026-09-01",amount:100,direction:"expense" as const,status:"confirmed" as const,transaction_type:"expense" as const,category_id:"food-id",raw_data:null},
+    {transaction_date:"2026-09-02",amount:5000,direction:"transfer" as const,status:"confirmed" as const,transaction_type:"card_repayment" as const,category_id:null,raw_data:null},
+  ];
+  assert.equal(spendingByCategory(rows,"2026-09",new Map([["food-id","food"]])).get("food"),100);
+});
