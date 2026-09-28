@@ -67,7 +67,7 @@ export function budgetCategoryFor(description: string, kind: TransactionKind) {
 
 function structured(description:string,signedAmount:number,legacyKind:TransactionKind){
   const result=classifyTransaction(description,signedAmount);
-  const fallback:TransactionType=legacyKind==="credit_card_repayment"?"card_repayment":legacyKind==="cash_withdrawal"?"cash":legacyKind;
+  const fallback:TransactionType=legacyKind==="credit_card_repayment"?"transfer":legacyKind==="cash_withdrawal"?"cash":legacyKind==="interest"?"income":legacyKind;
   return result.transactionType==="review"&&result.confidence>=.4?{...result,transactionType:fallback}:result;
 }
 
@@ -152,7 +152,7 @@ export function monthSummary(transactions: Array<Pick<ParsedTransaction, "amount
     if (tx.status !== "confirmed") return total;
     const amount=tx.conversionStatus==="pending"?null:tx.baseAmount??tx.amount;
     if(amount===null)return total;
-    if (tx.transactionTypeKey ? (tx.transactionTypeKey === "income" || tx.transactionTypeKey === "interest") : tx.direction === "income" && (tx.kind === "income" || tx.kind === "interest")) total.income += amount;
+    if (tx.transactionTypeKey ? tx.transactionTypeKey === "income" : tx.direction === "income" && (tx.kind === "income" || tx.kind === "interest")) total.income += amount;
     if (tx.transactionTypeKey ? tx.transactionTypeKey === "expense" : tx.direction === "expense" && tx.kind === "expense") total.expense += amount;
     total.balance = total.income - total.expense;
     total.savingsRate = total.income ? Math.round((total.balance / total.income) * 100) : 0;

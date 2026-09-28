@@ -20,8 +20,10 @@ create policy "own statement files" on storage.objects for all to authenticated 
 alter table categories add column if not exists key text;
 alter table categories add column if not exists parent_id uuid references categories(id) on delete cascade;
 alter table categories add column if not exists system boolean not null default false;
+alter table categories add column if not exists budget_enabled boolean not null default false;
+alter table categories add column if not exists is_active boolean not null default true;
 alter table categories add column if not exists updated_at timestamptz not null default now();
-alter table transactions add column if not exists transaction_type text check(transaction_type in('income','expense','transfer','card_repayment','investment','fx','cash','interest','review'));
+alter table transactions add column if not exists transaction_type text check(transaction_type in('income','expense','investment','transfer','fx','cash','review'));
 alter table transactions add column if not exists subcategory_id uuid references categories(id) on delete set null;
 alter table transactions add column if not exists classification_status text check(classification_status in('confirmed','review'));
 alter table transactions add column if not exists classification_confidence numeric(4,3);

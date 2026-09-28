@@ -55,11 +55,11 @@ export function rangeLabel(start: string, end: string) {
   return start === end ? format(start) : `${format(start)} – ${format(end)}`;
 }
 
-const suggestedBudgetAmounts:Record<string,number>={food:3000,shopping:4000,transportation:1500,housing:6000,travel:2500,health:1200,pets:1000,subscriptions:500,other:1800};
+const suggestedBudgetAmounts:Record<string,number>={food:3000,entertainment:1500,pets:1000,shopping:4000,education:1500,other:5000,housing:6000,travel:2500,insurance:1500,household:1800};
 export const defaultBudgets=expenseCategories.map(category=>({category:category.key,amount:suggestedBudgetAmounts[category.key]??1500,color:category.color}));
 
 export function isOperatingIncome(tx: DashboardTransaction) {
-  if(tx.transaction_type)return tx.status === "confirmed" && (tx.transaction_type === "income" || tx.transaction_type === "interest");
+  if(tx.transaction_type)return tx.status === "confirmed" && tx.transaction_type === "income";
   const kind = tx.raw_data?.kind ?? tx.direction;
   return tx.status === "confirmed" && tx.direction === "income" && (kind === "income" || kind === "interest");
 }
