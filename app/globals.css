@@ -27,34 +27,31 @@ body{overflow-x:hidden}.content,.page-heading>div,.hero-grid>*,.dashboard-grid>*
 
 .fx-card{border:1px solid #dce5e0;background:#f7faf8;border-radius:14px;padding:16px;margin:14px 0;display:grid;gap:14px}.fx-card h3{margin:0;font-size:15px}.fx-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.fx-facts span{display:grid;gap:3px;color:#78847e;font-size:12px}.fx-facts strong{color:#22332a;font-size:14px;overflow-wrap:anywhere}.fx-override{display:grid;gap:12px;padding-top:12px;border-top:1px solid #dce5e0}.fx-override label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fx-override input{width:160px}.fx-preview{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border-radius:10px;padding:12px}.fx-preview span,.fx-preview b{color:#6d7973}.fx-preview strong{color:#1f6b52}.fx-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}@media(max-width:560px){.fx-facts{grid-template-columns:1fr}.fx-preview{align-items:flex-start;flex-direction:column}}
 
-/* Dashboard cards own their dimensions; scroll stays inside each card. */
+/* Dashboard layout: cards own one axis; scroll viewports own only their intended axis. */
 .hero-grid{align-items:start;grid-template-columns:minmax(0,1.62fr) minmax(360px,1fr)}
-.hero-grid>.panel{align-self:start}
-.net-worth{height:470px;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.hero-grid>.panel{min-width:0;height:440px;min-height:0}
+.net-worth{overflow:hidden;display:flex;flex-direction:column}
 .net-worth .line-chart{flex:1;min-height:0}
-.line-chart{height:auto;margin-top:14px;display:grid;grid-template-rows:minmax(220px,1fr) 24px;gap:6px}
-.line-chart svg{width:100%;height:100%;min-height:220px;overflow:visible}
-.line-point{fill:#fff;stroke:#246c52;stroke-width:1.5;cursor:help}
-.line-axis{position:relative;display:block!important;height:24px;color:#89948e;font-size:11px}
+.line-chart{height:auto;margin-top:12px;display:grid;grid-template-rows:minmax(210px,1fr) 22px;gap:6px}
+.line-chart svg{display:block;width:100%;height:100%;min-height:210px;overflow:visible}
+.line-axis{position:relative!important;display:block!important;height:22px;color:#89948e;font-size:11px}
 .line-axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
-.line-axis span:first-child{left:0!important;transform:none}.line-axis span:last-child{transform:translateX(-100%)}
-.line-axis span:nth-child(1){left:0}.line-axis span:nth-child(2){left:calc(100% / max(1, var(--tick-count)))}
-.line-axis .tick-hidden{display:none}
-.budget-panel:not(.full-budget){height:470px;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.line-axis span:first-child{transform:none}.line-axis span:last-child{transform:translateX(-100%)}.line-axis .tick-hidden{display:none}
+.budget-panel:not(.full-budget){display:flex;flex-direction:column;overflow:hidden}
 .budget-sticky{flex:none;background:#fff;position:relative;z-index:1}
-.budget-scroll{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;padding:2px 8px 4px 0;scrollbar-width:thin;scrollbar-color:#b7c5be transparent}
-.budget-scroll::-webkit-scrollbar,.bar-viewport::-webkit-scrollbar{width:7px;height:7px}.budget-scroll::-webkit-scrollbar-thumb,.bar-viewport::-webkit-scrollbar-thumb{background:#b7c5be;border-radius:8px}.budget-scroll::-webkit-scrollbar-track,.bar-viewport::-webkit-scrollbar-track{background:transparent}
-.budget-panel:not(.full-budget) .budget-hint{flex:none;margin-top:10px}
-.dashboard-grid{align-items:start}
-.dashboard-grid>.panel{align-self:start}
-.cashflow{height:400px;min-height:0!important;overflow:hidden;display:flex;flex-direction:column}
-.cashflow .chart-legend{flex:none}
-.bar-viewport{position:relative;width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x pan-y;margin-top:10px;padding-bottom:5px;scrollbar-width:thin;scrollbar-color:#b7c5be transparent}
-.bar-viewport:before,.bar-viewport:after{content:"";position:sticky;z-index:3;top:0;bottom:0;width:18px;height:244px;pointer-events:none;display:block;opacity:0;transition:opacity .15s}
-.bar-viewport:before{float:left;left:0;background:linear-gradient(90deg,#fff,transparent)}.bar-viewport:after{float:right;right:0;background:linear-gradient(270deg,#fff,transparent)}.bar-viewport.has-left:before,.bar-viewport.has-right:after{opacity:1}
-.bar-chart{height:260px;display:flex;align-items:flex-end;gap:0;margin-top:0;width:100%}
-.bar-group{height:100%;flex:1 0 78px;min-width:78px;padding:0 10px}
-.bars{height:226px}.bars i{width:12px}
-@media(max-width:1100px){.hero-grid{grid-template-columns:1fr}.net-worth,.budget-panel:not(.full-budget){height:450px}.dashboard-grid{align-items:start}}
-@media(max-width:760px){.net-worth{height:430px}.budget-panel:not(.full-budget){height:min(440px,75vh)}.cashflow{height:390px}.line-chart{grid-template-rows:minmax(210px,1fr) 24px}.bar-group{flex-basis:72px;min-width:72px;padding:0 8px}}
-@media(max-width:420px){.panel{padding:17px}.net-worth{height:410px}.hero-number{font-size:30px;margin-top:18px}.line-chart{grid-template-rows:minmax(195px,1fr) 22px}.bar-group{flex-basis:70px;min-width:70px}}
+.budget-scroll{min-height:0;flex:1;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;padding:2px 8px 4px 0;scrollbar-width:thin;scrollbar-color:#bcc8c2 transparent}
+.budget-scroll::-webkit-scrollbar,.recent-list::-webkit-scrollbar,.bar-viewport::-webkit-scrollbar{width:6px;height:6px}.budget-scroll::-webkit-scrollbar-thumb,.recent-list::-webkit-scrollbar-thumb,.bar-viewport::-webkit-scrollbar-thumb{background:#bcc8c2;border-radius:8px}.budget-scroll::-webkit-scrollbar-track,.recent-list::-webkit-scrollbar-track,.bar-viewport::-webkit-scrollbar-track{background:transparent}
+.budget-panel:not(.full-budget) .budget-hint{flex:none;margin-top:9px}
+.dashboard-grid{display:grid;grid-template-columns:minmax(230px,.82fr) minmax(270px,.9fr) minmax(340px,1.28fr);gap:14px;align-items:stretch}
+.dashboard-grid>.secondary-card{height:380px;min-height:0;min-width:0;align-self:stretch;overflow:hidden}
+.spending{display:flex;flex-direction:column}.spending .donut-wrap{flex:1;min-height:0;margin-top:12px;align-items:center}.spending .donut{width:min(148px,42%)}
+.cashflow{display:flex;flex-direction:column}.chart-header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex:none}.chart-header .chart-legend{justify-content:flex-end;flex-wrap:wrap}
+.bar-viewport{width:100%;min-width:0;flex:1;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x;margin-top:12px;padding-bottom:4px;scrollbar-width:thin;scrollbar-color:#bcc8c2 transparent}
+.bar-chart{width:100%;height:276px;display:flex;align-items:stretch;gap:0;margin:0}
+.bar-group{height:276px;min-width:72px;flex:1 0 72px;padding:0 8px;display:grid;grid-template-rows:246px 22px;gap:8px;text-align:center;color:#8c9691;font-size:10px}
+.bars{height:246px;display:flex;align-items:flex-end;justify-content:center;gap:5px;border-bottom:1px solid #e8ece9}
+.bars i{width:12px;min-height:2px;border-radius:5px 5px 1px 1px}
+.recent{display:flex;flex-direction:column}.recent>.panel-heading{flex:none}.recent-list{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;margin-top:10px;padding-right:5px}.recent .review-banner{flex:none}
+@media(max-width:1100px){.hero-grid{grid-template-columns:1fr}.hero-grid>.panel{height:430px}.dashboard-grid{grid-template-columns:1fr 1fr}.dashboard-grid>.secondary-card{height:380px}.recent{grid-column:1/-1}}
+@media(max-width:760px){.hero-grid{display:grid}.hero-grid>.panel{height:420px;margin-bottom:0}.budget-panel:not(.full-budget){height:min(430px,72vh)}.dashboard-grid{grid-template-columns:1fr}.dashboard-grid>.secondary-card{height:auto;min-height:340px}.recent{grid-column:auto;max-height:400px}.cashflow{height:370px!important}.bar-group{min-width:68px;flex-basis:68px;padding:0 7px}.bar-chart,.bar-group{height:270px}.bar-group{grid-template-rows:240px 22px}.bars{height:240px}.line-chart{grid-template-rows:minmax(200px,1fr) 22px}}
+@media(max-width:420px){.panel{padding:17px}.hero-grid>.panel{height:400px}.hero-number{font-size:30px;margin-top:18px}.line-chart{grid-template-rows:minmax(188px,1fr) 22px}.spending .donut-wrap{flex-direction:column;justify-content:center}.spending .donut{width:min(148px,48vw)}.bar-group{min-width:66px;flex-basis:66px}}
