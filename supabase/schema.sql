@@ -32,3 +32,15 @@ alter table tags enable row level security;alter table transaction_tags enable r
 -- Accounts use soft archival so historical statements and transactions remain intact.
 alter table accounts add column if not exists is_archived boolean not null default false;
 alter table accounts add column if not exists updated_at timestamptz not null default now();
+
+-- Base currency settings and immutable original-currency transaction values.
+create table if not exists user_settings(user_id uuid primary key references auth.users(id) on delete cascade,base_currency text not null default 'CNY',created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+alter table user_settings enable row level security;
+alter table transactions add column if not exists original_amount numeric(18,6);
+alter table transactions add column if not exists original_currency text;
+alter table transactions add column if not exists base_amount numeric(18,6);
+alter table transactions add column if not exists base_currency text;
+alter table transactions add column if not exists exchange_rate numeric(20,10);
+alter table transactions add column if not exists exchange_rate_date date;
+alter table transactions add column if not exists exchange_rate_source text;
+alter table transactions add column if not exists conversion_status text;

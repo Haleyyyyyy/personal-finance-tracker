@@ -9,10 +9,22 @@ export type DashboardTransaction = {
   transaction_type?: TransactionType | null;
   category_id?: string | null;
   subcategory_id?: string | null;
+  base_amount?: number | null;
+  conversion_status?: "converted" | "pending" | null;
   raw_data: { kind?: TransactionKind; budget_category?: string } | null;
 };
 
 export type DashboardRange = "all" | "year" | "half" | "custom";
+
+export function filterTransactions<T extends DashboardTransaction & {account_id?:string|null;subcategory_id?:string|null}>(transactions:T[],filters:{accountId?:string;type?:string;categoryId?:string;subcategoryId?:string;taggedTransactionIds?:Set<string>}){
+  return transactions.filter((tx)=>
+    (!filters.accountId||filters.accountId==="all"||tx.account_id===filters.accountId)&&
+    (!filters.type||filters.type==="all"||tx.transaction_type===filters.type)&&
+    (!filters.categoryId||filters.categoryId==="all"||tx.category_id===filters.categoryId)&&
+    (!filters.subcategoryId||filters.subcategoryId==="all"||tx.subcategory_id===filters.subcategoryId)&&
+    (!filters.taggedTransactionIds||filters.taggedTransactionIds.has((tx as T&{id?:string}).id??""))
+  );
+}
 
 export function resolveMonthRange(transactions: Pick<DashboardTransaction, "transaction_date">[], mode: DashboardRange, customStart?: string, customEnd?: string) {
   const months = transactions.map((tx) => tx.transaction_date.slice(0, 7)).filter((value) => /^\d{4}-\d{2}$/.test(value)).sort();
@@ -57,6 +69,12 @@ export function isOrdinaryExpense(tx: DashboardTransaction) {
   return tx.status === "confirmed" && tx.direction === "expense" && (tx.raw_data?.kind ?? tx.direction) === "expense";
 }
 
+export function amountInBase(tx:DashboardTransaction){
+  if(tx.conversion_status==="pending")return null;
+  if(tx.base_amount!==undefined&&tx.base_amount!==null&&Number.isFinite(Number(tx.base_amount)))return Number(tx.base_amount);
+  return Number(tx.amount);
+}
+
 export function monthlySeries(transactions: DashboardTransaction[], months = 6, anchor = new Date()) {
   return Array.from({ length: months }, (_, index) => {
     const date = new Date(anchor.getFullYear(), anchor.getMonth() - (months - 1 - index), 1);
@@ -65,8 +83,8 @@ export function monthlySeries(transactions: DashboardTransaction[], months = 6, 
     return {
       key,
       label: `${date.getMonth() + 1}月`,
-      income: monthRows.filter(isOperatingIncome).reduce((sum, tx) => sum + Number(tx.amount), 0),
-      expense: monthRows.filter(isOrdinaryExpense).reduce((sum, tx) => sum + Number(tx.amount), 0),
+      income: monthRows.filter(isOperatingIncome).reduce((sum, tx) => sum + (amountInBase(tx)??0), 0),
+      expense: monthRows.filter(isOrdinaryExpense).reduce((sum, tx) => sum + (amountInBase(tx)??0), 0),
     };
   });
 }
@@ -77,7 +95,7 @@ export function spendingByCategory(transactions: DashboardTransaction[], monthKe
   const values = new Map<string, number>();
   transactions.filter((tx) => tx.transaction_date.startsWith(monthKey) && isOrdinaryExpense(tx)).forEach((tx) => {
     const category = transactionCategoryKey(tx,categoryKeysById);
-    values.set(category, (values.get(category) ?? 0) + Number(tx.amount));
+    const amount=amountInBase(tx);if(amount!==null)values.set(category, (values.get(category) ?? 0) + amount);
   });
   return values;
 }

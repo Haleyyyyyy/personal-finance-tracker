@@ -147,11 +147,13 @@ export function transactionFingerprintSources(accountId: string, transactions: P
   });
 }
 
-export function monthSummary(transactions: Array<Pick<ParsedTransaction, "amount" | "direction" | "kind" | "status"> & {transactionTypeKey?:TransactionType|null}>) {
+export function monthSummary(transactions: Array<Pick<ParsedTransaction, "amount" | "direction" | "kind" | "status"> & {transactionTypeKey?:TransactionType|null;baseAmount?:number|null;conversionStatus?:"converted"|"pending"|null}>) {
   return transactions.reduce((total, tx) => {
     if (tx.status !== "confirmed") return total;
-    if (tx.transactionTypeKey ? (tx.transactionTypeKey === "income" || tx.transactionTypeKey === "interest") : tx.direction === "income" && (tx.kind === "income" || tx.kind === "interest")) total.income += tx.amount;
-    if (tx.transactionTypeKey ? tx.transactionTypeKey === "expense" : tx.direction === "expense" && tx.kind === "expense") total.expense += tx.amount;
+    const amount=tx.conversionStatus==="pending"?null:tx.baseAmount??tx.amount;
+    if(amount===null)return total;
+    if (tx.transactionTypeKey ? (tx.transactionTypeKey === "income" || tx.transactionTypeKey === "interest") : tx.direction === "income" && (tx.kind === "income" || tx.kind === "interest")) total.income += amount;
+    if (tx.transactionTypeKey ? tx.transactionTypeKey === "expense" : tx.direction === "expense" && tx.kind === "expense") total.expense += amount;
     total.balance = total.income - total.expense;
     total.savingsRate = total.income ? Math.round((total.balance / total.income) * 100) : 0;
     return total;

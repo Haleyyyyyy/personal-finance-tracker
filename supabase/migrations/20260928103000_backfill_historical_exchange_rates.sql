@@ -1,0 +1,22 @@
+with rates(currency,transaction_date,rate,rate_date) as (values
+ ('AUD'::text,'2025-12-21'::date,4.6488::numeric,'2025-12-19'::date),
+ ('USD'::text,'2025-12-21'::date,7.0411::numeric,'2025-12-19'::date),
+ ('USD'::text,'2025-12-25'::date,7.0144::numeric,'2025-12-24'::date),
+ ('USD'::text,'2025-12-29'::date,7.0065::numeric,'2025-12-29'::date),
+ ('HKD'::text,'2025-12-30'::date,0.89843::numeric,'2025-12-30'::date),
+ ('JPY'::text,'2025-12-30'::date,0.04481::numeric,'2025-12-30'::date),
+ ('HKD'::text,'2026-01-07'::date,0.89787::numeric,'2026-01-07'::date),
+ ('AUD'::text,'2026-03-21'::date,4.8721::numeric,'2026-03-20'::date),
+ ('HKD'::text,'2026-03-21'::date,0.87983::numeric,'2026-03-20'::date),
+ ('USD'::text,'2026-03-21'::date,6.8943::numeric,'2026-03-20'::date),
+ ('EUR'::text,'2026-04-29'::date,7.9993::numeric,'2026-04-29'::date),
+ ('HKD'::text,'2026-04-29'::date,0.87199::numeric,'2026-04-29'::date),
+ ('AUD'::text,'2026-06-21'::date,4.7482::numeric,'2026-06-19'::date),
+ ('HKD'::text,'2026-06-21'::date,0.86357::numeric,'2026-06-19'::date),
+ ('USD'::text,'2026-06-21'::date,6.7693::numeric,'2026-06-19'::date),
+ ('HKD'::text,'2026-09-13'::date,0.85543::numeric,'2026-09-11'::date),
+ ('AUD'::text,'2026-09-21'::date,4.7789::numeric,'2026-09-21'::date),
+ ('HKD'::text,'2026-09-21'::date,0.85341::numeric,'2026-09-21'::date),
+ ('USD'::text,'2026-09-21'::date,6.6954::numeric,'2026-09-21'::date),
+ ('HKD'::text,'2026-09-22'::date,0.85423::numeric,'2026-09-22'::date)
+) update public.transactions t set exchange_rate=r.rate,exchange_rate_date=r.rate_date,exchange_rate_source='Frankfurter',base_amount=round(t.original_amount*r.rate,6),base_currency='CNY',conversion_status='converted' from rates r where t.original_currency=r.currency and t.transaction_date=r.transaction_date and t.conversion_status='pending';

@@ -36,3 +36,24 @@ test("预算只统计结构化 Expense 交易", async () => {
   ];
   assert.equal(spendingByCategory(rows,"2026-09",new Map([["food-id","food"]])).get("food"),100);
 });
+
+test("多币种聚合只使用已折算 base_amount，缺失汇率不按 1:1", async () => {
+  const {amountInBase,monthlySeries}=await import("../lib/dashboard.ts");
+  const rows=[
+    {transaction_date:"2026-09-01",amount:100,direction:"expense" as const,status:"confirmed" as const,transaction_type:"expense" as const,base_amount:100,conversion_status:"converted" as const,raw_data:null},
+    {transaction_date:"2026-09-02",amount:35000,direction:"expense" as const,status:"confirmed" as const,transaction_type:"expense" as const,base_amount:null,conversion_status:"pending" as const,raw_data:null},
+  ];
+  assert.equal(amountInBase(rows[0]),100);
+  assert.equal(amountInBase(rows[1]),null);
+  assert.equal(monthlySeries(rows,1,new Date("2026-09-15T12:00:00")).at(0)?.expense,100);
+});
+
+test("交易类型、分类、二级分类与账户筛选使用 AND 逻辑", async () => {
+  const {filterTransactions}=await import("../lib/dashboard.ts");
+  const rows=[
+    {id:"match",account_id:"a",transaction_date:"2026-09-01",amount:10,direction:"expense" as const,status:"confirmed" as const,transaction_type:"expense" as const,category_id:"shopping",subcategory_id:"clothing",raw_data:null},
+    {id:"wrong-tag",account_id:"a",transaction_date:"2026-09-01",amount:20,direction:"expense" as const,status:"confirmed" as const,transaction_type:"expense" as const,category_id:"shopping",subcategory_id:"clothing",raw_data:null},
+    {id:"transfer",account_id:"a",transaction_date:"2026-09-01",amount:30,direction:"transfer" as const,status:"confirmed" as const,transaction_type:"transfer" as const,category_id:null,subcategory_id:null,raw_data:null},
+  ];
+  assert.deepEqual(filterTransactions(rows,{accountId:"a",type:"expense",categoryId:"shopping",subcategoryId:"clothing",taggedTransactionIds:new Set(["match"])}).map(row=>row.id),["match"]);
+});
