@@ -63,3 +63,11 @@ test("联机余额不会混入交易描述", () => {
   assert.equal(rows[0].transactionType, "消费");
   assert.equal(rows[0].description, "消费 · 便利店");
 });
+
+test("用户备注不参与流水 fingerprint，重新导入不会产生新交易", () => {
+  const rows = parseCmbStatement(cmbFixture);
+  const before = transactionFingerprintSources("account-1", rows);
+  const withNotes = rows.map((row) => ({ ...row, note: "和朋友吃生日饭" }));
+  const after = transactionFingerprintSources("account-1", withNotes);
+  assert.deepEqual(after, before);
+});

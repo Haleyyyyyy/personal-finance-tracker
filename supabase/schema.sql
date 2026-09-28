@@ -44,3 +44,8 @@ alter table transactions add column if not exists exchange_rate numeric(20,10);
 alter table transactions add column if not exists exchange_rate_date date;
 alter table transactions add column if not exists exchange_rate_source text;
 alter table transactions add column if not exists conversion_status text;
+
+-- Private user-authored transaction notes; kept separate from bank descriptions and fingerprints.
+alter table transactions add column if not exists note text;
+alter table transactions drop constraint if exists transactions_note_length_check;
+alter table transactions add constraint transactions_note_length_check check(note is null or char_length(note) <= 1000);
