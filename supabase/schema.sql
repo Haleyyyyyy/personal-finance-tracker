@@ -49,3 +49,7 @@ alter table transactions add column if not exists conversion_status text;
 alter table transactions add column if not exists note text;
 alter table transactions drop constraint if exists transactions_note_length_check;
 alter table transactions add constraint transactions_note_length_check check(note is null or char_length(note) <= 1000);
+
+-- Audit explicit automatic/manual FX changes. exchange_rate_source='manual' has override priority.
+alter table transactions add column if not exists exchange_rate_updated_at timestamptz;
+alter table transactions add column if not exists exchange_rate_updated_by uuid references auth.users(id) on delete set null;
